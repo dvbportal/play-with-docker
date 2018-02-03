@@ -1,4 +1,4 @@
-# play-with-docker
+# play-with-docker - JetLabs Fork
 
 Play With Docker gives you the experience of having a free Alpine Linux Virtual Machine in the cloud
 where you can build and run Docker containers and even create clusters with Docker features like Swarm Mode.
@@ -17,6 +17,77 @@ just run  `docker swarm init` in the destination daemon.
 It's also necessary to manually load the IPVS kernel module because as swarms are created in `dind`, 
 the daemon won't load it automatically. Run the following command for that purpose: `sudo modprobe xt_ipvs`
 
+
+## Pre-built Containers
+
+This fork is a snapshot of the original play-with-docker repository of a fully working revision. To get this easily up and running we provide pre-built containers on Jetlabs' docker hub. To run, use the following docker compose definition:
+
+```
+version: '3.2'
+services:
+    haproxy:
+        container_name: haproxy
+        image: haproxy
+        ports:
+            - "80:8080"
+        volumes:
+            - ./haproxy:/usr/local/etc/haproxy
+            
+    pwd:
+        # pwd daemon container always needs to be named this way
+        container_name: pwd
+        # use the latest pre-built image
+        image: jetlabs/pwd
+        volumes:
+            # since this app creates networks and launches containers, we need to talk to docker daemon
+            - /var/run/docker.sock:/var/run/docker.sock
+            # mount the box mounted shared folder to the container
+            - sessions:/pwd
+    l2:
+        container_name: l2
+        # use the latest pre-built image
+        image: jetlabs/l2
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - networks:/pwd
+        ports:
+            - "8022:22"
+            - "8053:53"
+            - "443:443"
+volumes:
+    sessions:
+    networks:
+```
+
+Make sure you have the following haproxy configuration in `./haproxy/haproxy.conf`:
+```
+defaults
+    mode http
+    timeout connect 5000ms
+
+frontend http-in
+    bind *:8080
+
+    acl host_direct hdr_reg(host) -i ^.*\.direct\..*?:?.*$
+
+    use_backend l2 if host_direct
+
+    default_backend pwd 
+
+backend pwd
+    server node1 pwd:3000
+
+backend l2
+    server node2 l2:443
+```
+
+Start the Docker daemon on your machine and run `docker pull franela/dind`. Run play-with-docker with `docker-compose up`. Then open http://localhost in your browser. 
+
+If you want to ssh into your containers add the following line to your `/etc/hosts` file:
+
+```
+127.0.0.1   localhost direct.localhost
+```
 
 ## Development
 
